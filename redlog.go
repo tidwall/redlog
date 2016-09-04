@@ -23,6 +23,9 @@ type Logger struct {
 	app    byte
 	filter func(line string, tty bool) (msg string, app byte, level logLevel)
 	parent *Logger
+	idups  bool
+	last   string
+	lastt  time.Time
 }
 
 type logLevel int
@@ -69,6 +72,16 @@ func (l *Logger) Sub(app byte) *Logger {
 		parent: l,
 		app:    app,
 	}
+}
+
+func (l *Logger) SetIgnoreDups(t bool) {
+	if l.parent != nil {
+		l.parent.SetIgnoreDups(t)
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.idups = t
 }
 
 // SetLevel sets the level of the logger.
@@ -137,9 +150,21 @@ func (l *Logger) logf(app byte, level logLevel, format string, args ...interface
 	if !l.doesAccept(level) {
 		return
 	}
-	tm := time.Now().Format("02 Jan 15:04:05.000")
+	now := time.Now()
+	tm := now.Format("02 Jan 15:04:05.000")
 	msg := fmt.Sprintf(format, args...)
-	l.write(fmt.Sprintf("[%d:%c] %s %s %s\n", l.pid, app, tm, level, msg))
+	dup := false
+	l.mu.Lock()
+	if l.idups {
+		dup = l.last == msg && !l.lastt.IsZero() &&
+			now.Sub(l.lastt) < time.Second
+		l.last = msg
+		l.lastt = now
+	}
+	l.mu.Unlock()
+	if !dup {
+		l.write(fmt.Sprintf("[%d:%c] %s %s %s\n", l.pid, app, tm, level, msg))
+	}
 }
 
 // Debugf writes a debug message.
