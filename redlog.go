@@ -128,8 +128,13 @@ func (l *Logger) SetFilter(filter func(line string, tty bool) (msg string, app b
 
 // Write writes to the log
 func (l *Logger) Write(p []byte) (int, error) {
+	return l.iwrite(p, l.app)
+}
+
+// Write writes to the log
+func (l *Logger) iwrite(p []byte, app byte) (int, error) {
 	if l.parent != nil {
-		return l.parent.Write(p)
+		return l.parent.iwrite(p, app)
 	}
 	l.mu.RLock()
 	filter := l.filter
@@ -137,7 +142,7 @@ func (l *Logger) Write(p []byte) (int, error) {
 	if filter == nil {
 		return l.wr.Write(p)
 	}
-	msg, app, level := filter(strings.TrimSpace(string(p)), l.tty)
+	msg, _, level := filter(strings.TrimSpace(string(p)), l.tty)
 	l.logf(app, level, "%s", msg)
 	return len(p), nil
 }
@@ -225,45 +230,49 @@ func istty(wr io.Writer) bool {
 
 // HashicorpRaftFilter is used as a filter to convert a log message
 // from the hashicorp/raft package into redlog structured message.
-var HashicorpRaftFilter = func(line string, tty bool) (msg string, app byte, level logLevel) {
-	level = logLevelNotice
-	app = 'R'
-	parts := strings.SplitN(line, " ", 5)
-	for i, part := range parts {
-		if len(part) > 1 && part[0] == '[' && part[len(part)-1] == ']' {
-			switch part[1] {
-			default: // -> verbose
-				level = logLevelVerbose
-			case 'W': // warning -> warning
-				level = logLevelWarning
-			case 'E': // error -> warning
-				level = logLevelWarning
-			case 'D': // debug -> debug
-				level = logLevelDebug
-			case 'V': // verbose -> verbose
-				level = logLevelVerbose
-			case 'I': // info -> notice
-				level = logLevelNotice
-			}
-			i++
-			for ; i < len(parts); i++ {
-				part = parts[i]
-				if part[len(part)-1] == ':' {
-					switch part[:len(part)-1] {
-					default:
-						app = 'R' // default to Raft app
+var HashicorpRaftFilter func(line string, tty bool) (msg string, app byte, level logLevel)
+
+func init() {
+	HashicorpRaftFilter = func(line string, tty bool) (msg string, app byte, level logLevel) {
+		level = logLevelNotice
+		app = 'R'
+		parts := strings.SplitN(line, " ", 5)
+		for i, part := range parts {
+			if len(part) > 1 && part[0] == '[' && part[len(part)-1] == ']' {
+				switch part[1] {
+				default: // -> verbose
+					level = logLevelVerbose
+				case 'W': // warning -> warning
+					level = logLevelWarning
+				case 'E': // error -> warning
+					level = logLevelWarning
+				case 'D': // debug -> debug
+					level = logLevelDebug
+				case 'V': // verbose -> verbose
+					level = logLevelVerbose
+				case 'I': // info -> notice
+					level = logLevelNotice
+				}
+				i++
+				for ; i < len(parts); i++ {
+					part = parts[i]
+					if part[len(part)-1] == ':' {
+						switch part[:len(part)-1] {
+						default:
+							app = 'R' // default to Raft app
+						}
 					}
+					break
 				}
 				break
 			}
-			break
 		}
+		msg = parts[len(parts)-1]
+		if tty {
+			msg = strings.Replace(msg, "[Leader]", "\x1b[32m[Leader]\x1b[0m", 1)
+			msg = strings.Replace(msg, "[Follower]", "\x1b[33m[Follower]\x1b[0m", 1)
+			msg = strings.Replace(msg, "[Candidate]", "\x1b[36m[Candidate]\x1b[0m", 1)
+		}
+		return msg, app, level
 	}
-	msg = parts[len(parts)-1]
-	if tty {
-		msg = strings.Replace(msg, "[Leader]", "\x1b[32m[Leader]\x1b[0m", 1)
-		msg = strings.Replace(msg, "[Follower]", "\x1b[33m[Follower]\x1b[0m", 1)
-		msg = strings.Replace(msg, "[Candidate]", "\x1b[36m[Candidate]\x1b[0m", 1)
-	}
-	return msg, app, level
 }
