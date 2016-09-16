@@ -162,7 +162,7 @@ func (l *Logger) logf(app byte, level logLevel, format string, args ...interface
 	l.mu.Lock()
 	if l.idups {
 		dup = l.last == msg && !l.lastt.IsZero() &&
-			now.Sub(l.lastt) < time.Second
+			now.Sub(l.lastt) < time.Millisecond
 		l.last = msg
 		l.lastt = now
 	}
