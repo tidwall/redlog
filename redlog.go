@@ -168,7 +168,7 @@ func (l *Logger) logf(app byte, level logLevel, format string, args ...interface
 	}
 	l.mu.Unlock()
 	if !dup {
-		l.write(fmt.Sprintf("[%d:%c] %s %s %s\n", l.pid, app, tm, level, msg))
+		l.write(fmt.Sprintf("%d:%c %s %s %s\n", l.pid, app, tm, level, msg))
 	}
 }
 
