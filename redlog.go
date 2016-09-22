@@ -3,6 +3,7 @@
 package redlog
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -275,4 +276,43 @@ func init() {
 		}
 		return msg, app, level
 	}
+
+}
+
+// RedisLogColorizer filters the Redis log output and colorizes it.
+func RedisLogColorizer(wr io.Writer) io.Writer {
+	if !istty(wr) {
+		return wr
+	}
+	pr, pw := io.Pipe()
+	go func() {
+		rd := bufio.NewReader(pr)
+		for {
+			line, err := rd.ReadString('\n')
+			if err != nil {
+				return
+			}
+			parts := strings.Split(line, " ")
+			if len(parts) > 5 {
+				var color string
+				switch parts[4] {
+				case ".":
+					color = "\x1b[35m"
+				case "-":
+					color = ""
+				case "*":
+					color = "\x1b[1m"
+				case "#":
+					color = "\x1b[33m"
+				}
+				if color != "" {
+					parts[4] = color + parts[4] + "\x1b[0m"
+					line = strings.Join(parts, " ")
+				}
+			}
+			os.Stdout.Write([]byte(line))
+			continue
+		}
+	}()
+	return pw
 }
