@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -315,4 +316,22 @@ func RedisLogColorizer(wr io.Writer) io.Writer {
 		}
 	}()
 	return pw
+}
+
+// GoLogger returns a standard Go log.Logger which when used, will print
+// in the Redlog format.
+func (l *Logger) GoLogger() *log.Logger {
+	rd, wr := io.Pipe()
+	gl := log.New(wr, "", 0)
+	go func() {
+		brd := bufio.NewReader(rd)
+		for {
+			line, err := brd.ReadBytes('\n')
+			if err != nil {
+				continue
+			}
+			l.Printf("%s", line[:len(line)-1])
+		}
+	}()
+	return gl
 }
