@@ -25,9 +25,9 @@ log.Warningf("Heartbeat timeout reached, starting election")
 Output:
 
 ```
-[93324:M] 29 Aug 09:30:59.943 * Server started at 10.0.1.5:6379
-[93324:M] 29 Aug 09:31:01.892 . Connected to leader
-[93324:M] 29 Aug 09:31:02.331 # Heartbeat timeout reached, starting election 
+93324:M 29 Aug 09:30:59.943 * Server started at 10.0.1.5:6379
+93324:M 29 Aug 09:31:01.892 . Connected to leader
+93324:M 29 Aug 09:31:02.331 # Heartbeat timeout reached, starting election 
 ```
 
 Contact
