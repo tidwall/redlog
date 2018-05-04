@@ -194,6 +194,12 @@ func (l *Logger) Warningf(format string, args ...interface{}) {
 	l.logf(l.app, logLevelWarning, format, args...)
 }
 
+// Fatalf writes a warning message and exit process with exit code 1.
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	l.Warningf(format, args...)
+	os.Exit(1)
+}
+
 // Printf writes a default message.
 func (l *Logger) Printf(format string, args ...interface{}) {
 	l.Noticef(format, args...)
