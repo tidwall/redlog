@@ -145,13 +145,13 @@ func (l *Logger) iwrite(p []byte, app byte) (int, error) {
 		return l.wr.Write(p)
 	}
 	msg, _, level := filter(strings.TrimSpace(string(p)), l.tty)
-	l.logf(app, level, "%s", msg)
+	l.logf(app, level, "%s", false, msg)
 	return len(p), nil
 }
 
-func (l *Logger) logf(app byte, level logLevel, format string, args ...interface{}) {
+func (l *Logger) logf(app byte, level logLevel, format string, noformat bool, args ...interface{}) {
 	if l.parent != nil {
-		l.parent.logf(l.app, level, format, args...)
+		l.parent.logf(l.app, level, format, noformat, args...)
 		return
 	}
 	if !l.doesAccept(level) {
@@ -159,7 +159,12 @@ func (l *Logger) logf(app byte, level logLevel, format string, args ...interface
 	}
 	now := time.Now()
 	tm := now.Format("02 Jan 15:04:05.000")
-	msg := fmt.Sprintf(format, args...)
+	var msg string
+	if noformat {
+		msg = fmt.Sprint(args...)
+	} else {
+		msg = fmt.Sprintf(format, args...)
+	}
 	dup := false
 	l.mu.Lock()
 	if l.idups {
@@ -176,33 +181,95 @@ func (l *Logger) logf(app byte, level logLevel, format string, args ...interface
 
 // Debugf writes a debug message.
 func (l *Logger) Debugf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelDebug, format, args...)
+	l.logf(l.app, logLevelDebug, format, false, args...)
 }
 
 // Verbosef writes a verbose message.
 func (l *Logger) Verbosef(format string, args ...interface{}) {
-	l.logf(l.app, logLevelVerbose, format, args...)
+	l.logf(l.app, logLevelVerbose, format, false, args...)
 }
 
 // Noticef writes a notice message.
 func (l *Logger) Noticef(format string, args ...interface{}) {
-	l.logf(l.app, logLevelNotice, format, args...)
+	l.logf(l.app, logLevelNotice, format, false, args...)
 }
 
 // Warningf writes a warning message.
 func (l *Logger) Warningf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelWarning, format, args...)
+	l.logf(l.app, logLevelWarning, format, false, args...)
 }
 
 // Fatalf writes a warning message and exit process with exit code 1.
 func (l *Logger) Fatalf(format string, args ...interface{}) {
-	l.Warningf(format, args...)
+	l.logf(l.app, logLevelWarning, format, false, args...)
 	os.Exit(1)
 }
 
 // Printf writes a default message.
 func (l *Logger) Printf(format string, args ...interface{}) {
-	l.Noticef(format, args...)
+	l.logf(l.app, logLevelNotice, format, false, args...)
+}
+
+// Debug writes a debug message.
+func (l *Logger) Debug(args ...interface{}) {
+	l.logf(l.app, logLevelDebug, "", true, args...)
+}
+
+// Verbose writes a verbose message.
+func (l *Logger) Verbose(args ...interface{}) {
+	l.logf(l.app, logLevelVerbose, "", true, args...)
+}
+
+// Notice writes a notice message.
+func (l *Logger) Notice(args ...interface{}) {
+	l.logf(l.app, logLevelNotice, "", true, args...)
+}
+
+// Warning writes a warning message.
+func (l *Logger) Warning(args ...interface{}) {
+	l.logf(l.app, logLevelWarning, "", true, args...)
+}
+
+// Fatal writes a warning message and exit process with exit code 1.
+func (l *Logger) Fatal(args ...interface{}) {
+	l.logf(l.app, logLevelWarning, "", true, args...)
+	os.Exit(1)
+}
+
+// Print writes a default message.
+func (l *Logger) Print(args ...interface{}) {
+	l.logf(l.app, logLevelNotice, "", true, args...)
+}
+
+// Debugln writes a debug message.
+func (l *Logger) Debugln(args ...interface{}) {
+	l.logf(l.app, logLevelDebug, "", true, args...)
+}
+
+// Verboseln writes a verbose message.
+func (l *Logger) Verboseln(args ...interface{}) {
+	l.logf(l.app, logLevelVerbose, "", true, args...)
+}
+
+// Noticeln writes a notice message.
+func (l *Logger) Noticeln(args ...interface{}) {
+	l.logf(l.app, logLevelNotice, "", true, args...)
+}
+
+// Warningln writes a warning message.
+func (l *Logger) Warningln(args ...interface{}) {
+	l.logf(l.app, logLevelWarning, "", true, args...)
+}
+
+// Fatalln writes a warning message and exit process with exit code 1.
+func (l *Logger) Fatalln(args ...interface{}) {
+	l.logf(l.app, logLevelWarning, "", true, args...)
+	os.Exit(1)
+}
+
+// Println writes a default message.
+func (l *Logger) Println(args ...interface{}) {
+	l.logf(l.app, logLevelNotice, "", true, args...)
 }
 
 func (l *Logger) write(msg string) {
