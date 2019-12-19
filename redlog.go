@@ -76,6 +76,7 @@ func (l *Logger) Sub(app byte) *Logger {
 	}
 }
 
+// SetIgnoreDups ignores further duplicate messages
 func (l *Logger) SetIgnoreDups(t bool) {
 	if l.parent != nil {
 		l.parent.SetIgnoreDups(t)
@@ -309,40 +310,32 @@ var HashicorpRaftFilter func(line string, tty bool) (msg string, app byte, level
 
 func init() {
 	HashicorpRaftFilter = func(line string, tty bool) (msg string, app byte, level logLevel) {
-		level = logLevelNotice
-		app = 'R'
-		parts := strings.SplitN(line, " ", 5)
-		for i, part := range parts {
-			if len(part) > 1 && part[0] == '[' && part[len(part)-1] == ']' {
-				switch part[1] {
-				default: // -> verbose
-					level = logLevelVerbose
-				case 'W': // warning -> warning
-					level = logLevelWarning
-				case 'E': // error -> warning
-					level = logLevelWarning
-				case 'D': // debug -> debug
-					level = logLevelDebug
-				case 'V': // verbose -> verbose
-					level = logLevelVerbose
-				case 'I': // info -> notice
-					level = logLevelNotice
-				}
-				i++
-				for ; i < len(parts); i++ {
-					part = parts[i]
-					if part[len(part)-1] == ':' {
-						switch part[:len(part)-1] {
-						default:
-							app = 'R' // default to Raft app
-						}
-					}
-					break
-				}
-				break
+		msg = line
+		idx := strings.IndexByte(msg, ' ')
+		if idx != -1 {
+			msg = msg[idx+1:]
+		}
+		idx = strings.IndexByte(msg, ']')
+		if idx != -1 && msg[0] == '[' {
+			switch msg[1] {
+			default: // -> verbose
+				level = logLevelVerbose
+			case 'W': // warning -> warning
+				level = logLevelWarning
+			case 'E': // error -> warning
+				level = logLevelWarning
+			case 'D': // debug -> debug
+				level = logLevelDebug
+			case 'V': // verbose -> verbose
+				level = logLevelVerbose
+			case 'I': // info -> notice
+				level = logLevelNotice
+			}
+			msg = msg[idx+1:]
+			for len(msg) > 0 && msg[0] == ' ' {
+				msg = msg[1:]
 			}
 		}
-		msg = parts[len(parts)-1]
 		if tty {
 			msg = strings.Replace(msg, "[Leader]", "\x1b[32m[Leader]\x1b[0m", 1)
 			msg = strings.Replace(msg, "[Follower]", "\x1b[33m[Follower]\x1b[0m", 1)
@@ -350,7 +343,6 @@ func init() {
 		}
 		return msg, app, level
 	}
-
 }
 
 // RedisLogColorizer filters the Redis log output and colorizes it.
