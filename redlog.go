@@ -6,8 +6,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,302 +17,254 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-// Logger represents a logger
-type Logger struct {
-	mu     sync.RWMutex
-	wr     io.Writer
-	level  logLevel
-	tty    bool
-	pid    int
-	app    byte
-	filter func(line string, tty bool) (msg string, app byte, level logLevel)
-	parent *Logger
-	idups  bool
-	last   string
-	lastt  time.Time
-}
-
-type logLevel int
-
 const (
-	logLevelDebug   logLevel = 0 // '.'
-	logLevelVerbose logLevel = 1 // '-'
-	logLevelNotice  logLevel = 2 // '*'
-	logLevelWarning logLevel = 3 // '#'
+	levelDebug   = 0 // '.'
+	levelVerbose = 1 // '-'
+	levelNotice  = 2 // '*'
+	levelWarning = 3 // '#'
+	levelFatal   = 4 // '#' special condition
 )
 
-func (level logLevel) String() string {
-	switch level {
-	default:
-		return string('?')
-	case logLevelDebug:
-		return string('.')
-	case logLevelVerbose:
-		return string('-')
-	case logLevelNotice:
-		return string('*')
-	case logLevelWarning:
-		return string('#')
-	}
+var levelChars = []byte{'.', '-', '*', '#', '#'}
+var levelColors = []string{"35", "", "1", "33", "31"}
+
+// Options ...
+type Options struct {
+	Level  int
+	Filter func(line string, tty bool) (msg string, app byte, level int)
+	App    byte
 }
 
-// New creates a new Logger
-func New(wr io.Writer) *Logger {
-	return &Logger{
-		wr:    wr,
-		level: logLevelNotice,
-		pid:   os.Getpid(),
-		tty:   istty(wr),
-		app:   'M',
-	}
+// DefaultOptions ...
+var DefaultOptions = &Options{
+	Level:  2,
+	Filter: nil,
+	App:    'M',
 }
 
-// Sub creates a logger that inherits the properties of the caller logger.
-// The app parameter will be used in the output message.
-func (l *Logger) Sub(app byte) *Logger {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return &Logger{
-		parent: l,
-		app:    app,
-	}
+// Logger ...
+type Logger struct {
+	app    byte
+	level  int
+	pid    int
+	filter func(line string, tty bool) (msg string, app byte, level int)
+	tty    bool
+
+	mu sync.Mutex
+	wr io.Writer
 }
 
-// SetIgnoreDups ignores further duplicate messages
-func (l *Logger) SetIgnoreDups(t bool) {
-	if l.parent != nil {
-		l.parent.SetIgnoreDups(t)
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.idups = t
-}
-
-// SetLevel sets the level of the logger.
+// New sets the level of the logger.
 //   0 - Debug
 //   1 - Verbose
 //   2 - Notice
 //   3 - Warning
-func (l *Logger) SetLevel(level int) {
-	if l.parent != nil {
-		l.parent.SetLevel(level)
-		return
+func New(wr io.Writer, opts *Options) *Logger {
+	if wr == nil {
+		wr = ioutil.Discard
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if level < int(logLevelDebug) {
-		level = int(logLevelDebug)
-	} else if level > int(logLevelWarning) {
-		level = int(logLevelWarning)
+	if opts == nil {
+		opts = DefaultOptions
 	}
-	l.level = logLevel(level)
+	if opts.Level < levelDebug || opts.Level > levelWarning {
+		panic("invalid level")
+	}
+	l := new(Logger)
+	l.wr = wr
+	l.filter = opts.Filter
+	l.app = opts.App
+	l.level = opts.Level
+	l.pid = os.Getpid()
+	if f, ok := wr.(*os.File); ok && terminal.IsTerminal(int(f.Fd())) {
+		l.tty = true
+	}
+	return l
 }
 
-func (l *Logger) doesAccept(level logLevel) bool {
-	if l.parent != nil {
-		return l.parent.doesAccept(level)
-	}
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return level >= l.level
+// Debugf ...
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	l.writef(levelDebug, format, args)
 }
 
-// SetFilter set the logger filter.
-// A filter can be used to process standard writes into
-// structured redlog format.
-func (l *Logger) SetFilter(filter func(line string, tty bool) (msg string, app byte, level logLevel)) {
-	if l.parent != nil {
-		l.parent.SetFilter(filter)
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.filter = filter
+// Debug ...
+func (l *Logger) Debug(args ...interface{}) {
+	l.write(levelDebug, args)
+}
+
+// Debugln ...
+func (l *Logger) Debugln(args ...interface{}) {
+	l.write(levelDebug, args)
+}
+
+// Verbf ...
+func (l *Logger) Verbf(format string, args ...interface{}) {
+	l.writef(levelVerbose, format, args)
+}
+
+// Verb ...
+func (l *Logger) Verb(args ...interface{}) {
+	l.write(levelVerbose, args)
+}
+
+// Verbln ...
+func (l *Logger) Verbln(args ...interface{}) {
+	l.write(levelVerbose, args)
+}
+
+// Noticef ...
+func (l *Logger) Noticef(format string, args ...interface{}) {
+	l.writef(levelNotice, format, args)
+}
+
+// Notice ...
+func (l *Logger) Notice(args ...interface{}) {
+	l.write(levelNotice, args)
+}
+
+// Noticeln ...
+func (l *Logger) Noticeln(args ...interface{}) {
+	l.write(levelNotice, args)
+}
+
+// Printf ...
+func (l *Logger) Printf(format string, args ...interface{}) {
+	l.writef(levelNotice, format, args)
+}
+
+// Print ...
+func (l *Logger) Print(args ...interface{}) {
+	l.write(levelNotice, args)
+}
+
+// Println ...
+func (l *Logger) Println(args ...interface{}) {
+	l.write(levelNotice, args)
+}
+
+// Warningf ...
+func (l *Logger) Warningf(format string, args ...interface{}) {
+	l.writef(levelWarning, format, args)
+}
+
+// Warning ...
+func (l *Logger) Warning(args ...interface{}) {
+	l.write(levelWarning, args)
+}
+
+// Warningln ...
+func (l *Logger) Warningln(args ...interface{}) {
+	l.write(levelWarning, args)
+}
+
+// Fatalf ...
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	l.writef(levelFatal, format, args)
+	os.Exit(1)
+}
+
+// Fatal ...
+func (l *Logger) Fatal(args ...interface{}) {
+	l.write(levelFatal, args)
+	os.Exit(1)
+}
+
+// Fatalln ...
+func (l *Logger) Fatalln(args ...interface{}) {
+	l.write(levelFatal, args)
+	os.Exit(1)
+}
+
+// Panicf ...
+func (l *Logger) Panicf(format string, args ...interface{}) {
+	l.writef(levelFatal, format, args)
+	panic("")
+}
+
+// Panic ...
+func (l *Logger) Panic(args ...interface{}) {
+	l.write(levelFatal, args)
+	panic("")
+}
+
+// Panicln ...
+func (l *Logger) Panicln(args ...interface{}) {
+	l.write(levelFatal, args)
+	panic("")
 }
 
 // Write writes to the log
 func (l *Logger) Write(p []byte) (int, error) {
-	return l.iwrite(p, l.app)
-}
-
-// Write writes to the log
-func (l *Logger) iwrite(p []byte, app byte) (int, error) {
-	if l.parent != nil {
-		return l.parent.iwrite(p, app)
+	var app byte
+	var level int
+	line := string(p)
+	if l.filter != nil {
+		line, app, level = l.filter(line, l.tty)
 	}
-	l.mu.RLock()
-	filter := l.filter
-	l.mu.RUnlock()
-	if filter == nil {
-		return l.wr.Write(p)
+	if level >= l.level {
+		write(false, l, app, level, "", []interface{}{line})
 	}
-	msg, _, level := filter(strings.TrimSpace(string(p)), l.tty)
-	l.logf(app, level, "%s", false, msg)
 	return len(p), nil
 }
 
-func (l *Logger) logf(app byte, level logLevel, format string, noformat bool, args ...interface{}) {
-	if l.parent != nil {
-		l.parent.logf(l.app, level, format, noformat, args...)
+func (l *Logger) writef(level int, format string, args []interface{}) {
+	if level >= l.level {
+		write(true, l, l.app, level, format, args)
+	}
+}
+
+func (l *Logger) write(level int, args []interface{}) {
+	if level >= l.level {
+		write(false, l, l.app, level, "", args)
+	}
+}
+
+//go:noinline
+func write(useFormat bool, l *Logger, app byte, level int, format string,
+	args []interface{}) {
+	if l.wr == ioutil.Discard {
 		return
 	}
-	if !l.doesAccept(level) {
-		return
-	}
+	var prefix []byte
 	now := time.Now()
-	tm := now.Format("02 Jan 15:04:05.000")
-	var msg string
-	if noformat {
-		msg = fmt.Sprint(args...)
+	prefix = strconv.AppendInt(prefix, int64(l.pid), 10)
+	prefix = append(prefix, ':', app, ' ')
+	prefix = now.AppendFormat(prefix, "02 Jan 15:04:05.000")
+	prefix = append(prefix, ' ')
+	if l.tty && levelColors[level] != "" {
+		prefix = append(prefix, "\x1b["+levelColors[level]+"m"...)
+		prefix = append(prefix, levelChars[level])
+		prefix = append(prefix, "\x1b[0m"...)
 	} else {
+		prefix = append(prefix, levelChars[level])
+	}
+	var msg string
+	if useFormat {
 		msg = fmt.Sprintf(format, args...)
+	} else {
+		msg = fmt.Sprint(args...)
 	}
-	dup := false
-	l.mu.Lock()
-	if l.idups {
-		dup = l.last == msg && !l.lastt.IsZero() &&
-			now.Sub(l.lastt) < time.Millisecond
-		l.last = msg
-		l.lastt = now
+	for len(msg) > 0 {
+		switch msg[len(msg)-1] {
+		case '\t', ' ', '\r', '\n':
+			msg = msg[:len(msg)-1]
+			continue
+		}
+		break
 	}
-	l.mu.Unlock()
-	if !dup {
-		l.write(fmt.Sprintf("%d:%c %s %s %s\n", l.pid, app, tm, level, msg))
-	}
-}
-
-// Debugf writes a debug message.
-func (l *Logger) Debugf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelDebug, format, false, args...)
-}
-
-// Verbosef writes a verbose message.
-func (l *Logger) Verbosef(format string, args ...interface{}) {
-	l.logf(l.app, logLevelVerbose, format, false, args...)
-}
-
-// Noticef writes a notice message.
-func (l *Logger) Noticef(format string, args ...interface{}) {
-	l.logf(l.app, logLevelNotice, format, false, args...)
-}
-
-// Warningf writes a warning message.
-func (l *Logger) Warningf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelWarning, format, false, args...)
-}
-
-// Fatalf writes a warning message and exit process with exit code 1.
-func (l *Logger) Fatalf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelWarning, format, false, args...)
-	os.Exit(1)
-}
-
-// Printf writes a default message.
-func (l *Logger) Printf(format string, args ...interface{}) {
-	l.logf(l.app, logLevelNotice, format, false, args...)
-}
-
-// Debug writes a debug message.
-func (l *Logger) Debug(args ...interface{}) {
-	l.logf(l.app, logLevelDebug, "", true, args...)
-}
-
-// Verbose writes a verbose message.
-func (l *Logger) Verbose(args ...interface{}) {
-	l.logf(l.app, logLevelVerbose, "", true, args...)
-}
-
-// Notice writes a notice message.
-func (l *Logger) Notice(args ...interface{}) {
-	l.logf(l.app, logLevelNotice, "", true, args...)
-}
-
-// Warning writes a warning message.
-func (l *Logger) Warning(args ...interface{}) {
-	l.logf(l.app, logLevelWarning, "", true, args...)
-}
-
-// Fatal writes a warning message and exit process with exit code 1.
-func (l *Logger) Fatal(args ...interface{}) {
-	l.logf(l.app, logLevelWarning, "", true, args...)
-	os.Exit(1)
-}
-
-// Print writes a default message.
-func (l *Logger) Print(args ...interface{}) {
-	l.logf(l.app, logLevelNotice, "", true, args...)
-}
-
-// Debugln writes a debug message.
-func (l *Logger) Debugln(args ...interface{}) {
-	l.logf(l.app, logLevelDebug, "", true, args...)
-}
-
-// Verboseln writes a verbose message.
-func (l *Logger) Verboseln(args ...interface{}) {
-	l.logf(l.app, logLevelVerbose, "", true, args...)
-}
-
-// Noticeln writes a notice message.
-func (l *Logger) Noticeln(args ...interface{}) {
-	l.logf(l.app, logLevelNotice, "", true, args...)
-}
-
-// Warningln writes a warning message.
-func (l *Logger) Warningln(args ...interface{}) {
-	l.logf(l.app, logLevelWarning, "", true, args...)
-}
-
-// Fatalln writes a warning message and exit process with exit code 1.
-func (l *Logger) Fatalln(args ...interface{}) {
-	l.logf(l.app, logLevelWarning, "", true, args...)
-	os.Exit(1)
-}
-
-// Println writes a default message.
-func (l *Logger) Println(args ...interface{}) {
-	l.logf(l.app, logLevelNotice, "", true, args...)
-}
-
-func (l *Logger) write(msg string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.tty {
-		parts := strings.SplitN(msg, " ", 6)
-		var color string
-		switch parts[4] {
-		case ".":
-			color = "\x1b[35m"
-		case "-":
-			color = ""
-		case "*":
-			color = "\x1b[1m"
-		case "#":
-			color = "\x1b[33m"
-		}
-		if color != "" {
-			parts[4] = color + parts[4] + "\x1b[0m"
-			msg = strings.Join(parts, " ")
-		}
-	}
-	io.WriteString(l.wr, strings.TrimSpace(msg)+"\n")
-}
-
-func istty(wr io.Writer) bool {
-	if f, ok := wr.(*os.File); ok {
-		return terminal.IsTerminal(int(f.Fd()))
-	}
-	return false
+	fmt.Fprintf(l.wr, "%s %s\n", prefix, msg)
 }
 
 // HashicorpRaftFilter is used as a filter to convert a log message
 // from the hashicorp/raft package into redlog structured message.
-var HashicorpRaftFilter func(line string, tty bool) (msg string, app byte, level logLevel)
+var HashicorpRaftFilter func(line string, tty bool) (msg string, app byte,
+	level int)
 
 func init() {
-	HashicorpRaftFilter = func(line string, tty bool) (msg string, app byte, level logLevel) {
-		msg = line
+	HashicorpRaftFilter = func(line string, tty bool) (msg string, app byte,
+		level int) {
+		msg = string(line)
 		idx := strings.IndexByte(msg, ' ')
 		if idx != -1 {
 			msg = msg[idx+1:]
@@ -319,17 +273,17 @@ func init() {
 		if idx != -1 && msg[0] == '[' {
 			switch msg[1] {
 			default: // -> verbose
-				level = logLevelVerbose
+				level = levelVerbose
 			case 'W': // warning -> warning
-				level = logLevelWarning
+				level = levelWarning
 			case 'E': // error -> warning
-				level = logLevelWarning
+				level = levelWarning
 			case 'D': // debug -> debug
-				level = logLevelDebug
+				level = levelDebug
 			case 'V': // verbose -> verbose
-				level = logLevelVerbose
+				level = levelVerbose
 			case 'I': // info -> notice
-				level = logLevelNotice
+				level = levelNotice
 			}
 			msg = msg[idx+1:]
 			for len(msg) > 0 && msg[0] == ' ' {
@@ -337,9 +291,12 @@ func init() {
 			}
 		}
 		if tty {
-			msg = strings.Replace(msg, "[Leader]", "\x1b[32m[Leader]\x1b[0m", 1)
-			msg = strings.Replace(msg, "[Follower]", "\x1b[33m[Follower]\x1b[0m", 1)
-			msg = strings.Replace(msg, "[Candidate]", "\x1b[36m[Candidate]\x1b[0m", 1)
+			msg = strings.Replace(msg, "[Leader]",
+				"\x1b[32m[Leader]\x1b[0m", 1)
+			msg = strings.Replace(msg, "[Follower]",
+				"\x1b[33m[Follower]\x1b[0m", 1)
+			msg = strings.Replace(msg, "[Candidate]",
+				"\x1b[36m[Candidate]\x1b[0m", 1)
 		}
 		return msg, app, level
 	}
@@ -347,7 +304,7 @@ func init() {
 
 // RedisLogColorizer filters the Redis log output and colorizes it.
 func RedisLogColorizer(wr io.Writer) io.Writer {
-	if !istty(wr) {
+	if f, ok := wr.(*os.File); !ok || !terminal.IsTerminal(int(f.Fd())) {
 		return wr
 	}
 	pr, pw := io.Pipe()

@@ -7,6 +7,6 @@ import (
 
 func TestLog(t *testing.T) {
 	buf := &bytes.Buffer{}
-	l := New(buf)
+	l := New(buf, nil)
 	l.Printf("hello world\n")
 }
