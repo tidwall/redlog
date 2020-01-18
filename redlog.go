@@ -194,11 +194,19 @@ func (l *Logger) Panicln(args ...interface{}) {
 
 // Write writes to the log
 func (l *Logger) Write(p []byte) (int, error) {
-	var app byte
 	var level int
+	app := l.app
 	line := string(p)
 	if l.filter != nil {
 		line, app, level = l.filter(line, l.tty)
+		if app == 0 {
+			app = l.app
+		}
+		if level < levelDebug {
+			level = levelDebug
+		} else if level > levelWarning {
+			level = levelWarning
+		}
 	}
 	if level >= l.level {
 		write(false, l, app, level, "", []interface{}{line})
