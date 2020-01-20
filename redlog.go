@@ -31,25 +31,28 @@ var levelColors = []string{"35", "", "1", "33", "31"}
 
 // Options ...
 type Options struct {
-	Level  int
-	Filter func(line string, tty bool) (msg string, app byte, level int)
-	App    byte
+	Level      int
+	Filter     func(line string, tty bool) (msg string, app byte, level int)
+	PostFilter func(line string) string
+	App        byte
 }
 
 // DefaultOptions ...
 var DefaultOptions = &Options{
-	Level:  2,
-	Filter: nil,
-	App:    'M',
+	Level:      2,
+	Filter:     nil,
+	PostFilter: nil,
+	App:        'M',
 }
 
 // Logger ...
 type Logger struct {
-	appch  uint32
-	level  int
-	pid    int
-	filter func(line string, tty bool) (msg string, app byte, level int)
-	tty    bool
+	appch      uint32
+	level      int
+	pid        int
+	filter     func(line string, tty bool) (msg string, app byte, level int)
+	postFilter func(line string) string
+	tty        bool
 
 	mu sync.Mutex
 	wr io.Writer
@@ -73,6 +76,7 @@ func New(wr io.Writer, opts *Options) *Logger {
 	l := new(Logger)
 	l.wr = wr
 	l.filter = opts.Filter
+	l.postFilter = opts.PostFilter
 	l.SetApp(opts.App)
 	l.level = opts.Level
 	l.pid = os.Getpid()
@@ -270,9 +274,13 @@ func write(useFormat bool, l *Logger, app byte, level int, format string,
 		}
 		break
 	}
+	line := strings.TrimSpace(fmt.Sprintf("%s %s", prefix, msg))
+	if l.postFilter != nil {
+		line = strings.TrimSpace(l.postFilter(line))
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	fmt.Fprintf(l.wr, "%s %s\n", prefix, msg)
+	fmt.Fprintf(l.wr, "%s\n", line)
 }
 
 // HashicorpRaftFilter is used as a filter to convert a log message
