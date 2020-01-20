@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh/terminal"
@@ -44,7 +45,7 @@ var DefaultOptions = &Options{
 
 // Logger ...
 type Logger struct {
-	app    byte
+	appch  uint32
 	level  int
 	pid    int
 	filter func(line string, tty bool) (msg string, app byte, level int)
@@ -72,13 +73,23 @@ func New(wr io.Writer, opts *Options) *Logger {
 	l := new(Logger)
 	l.wr = wr
 	l.filter = opts.Filter
-	l.app = opts.App
+	l.SetApp(opts.App)
 	l.level = opts.Level
 	l.pid = os.Getpid()
 	if f, ok := wr.(*os.File); ok && terminal.IsTerminal(int(f.Fd())) {
 		l.tty = true
 	}
 	return l
+}
+
+// SetApp sets the app character
+func (l *Logger) SetApp(app byte) {
+	atomic.StoreUint32(&l.appch, uint32(app))
+}
+
+// App returns the app character
+func (l *Logger) App() byte {
+	return byte(atomic.LoadUint32(&l.appch))
 }
 
 // Debugf ...
@@ -195,12 +206,12 @@ func (l *Logger) Panicln(args ...interface{}) {
 // Write writes to the log
 func (l *Logger) Write(p []byte) (int, error) {
 	level := l.level
-	app := l.app
+	app := l.App()
 	line := string(p)
 	if l.filter != nil {
 		line, app, level = l.filter(line, l.tty)
 		if app == 0 {
-			app = l.app
+			app = l.App()
 		}
 		if level < levelDebug {
 			level = levelDebug
@@ -216,13 +227,13 @@ func (l *Logger) Write(p []byte) (int, error) {
 
 func (l *Logger) writef(level int, format string, args []interface{}) {
 	if level >= l.level {
-		write(true, l, l.app, level, format, args)
+		write(true, l, l.App(), level, format, args)
 	}
 }
 
 func (l *Logger) write(level int, args []interface{}) {
 	if level >= l.level {
-		write(false, l, l.app, level, "", args)
+		write(false, l, l.App(), level, "", args)
 	}
 }
 
