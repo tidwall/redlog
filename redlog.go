@@ -33,7 +33,7 @@ var levelColors = []string{"35", "", "1", "33", "31"}
 type Options struct {
 	Level      int
 	Filter     func(line string, tty bool) (msg string, app byte, level int)
-	PostFilter func(line string) string
+	PostFilter func(line string, tty bool) string
 	App        byte
 }
 
@@ -51,7 +51,7 @@ type Logger struct {
 	level      int
 	pid        int
 	filter     func(line string, tty bool) (msg string, app byte, level int)
-	postFilter func(line string) string
+	postFilter func(line string, tty bool) string
 	tty        bool
 
 	mu sync.Mutex
@@ -276,7 +276,7 @@ func write(useFormat bool, l *Logger, app byte, level int, format string,
 	}
 	line := strings.TrimSpace(fmt.Sprintf("%s %s", prefix, msg))
 	if l.postFilter != nil {
-		line = strings.TrimSpace(l.postFilter(line))
+		line = strings.TrimSpace(l.postFilter(line, l.tty))
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -324,6 +324,12 @@ func init() {
 				"\x1b[33m[Follower]\x1b[0m", 1)
 			msg = strings.Replace(msg, "[Candidate]",
 				"\x1b[36m[Candidate]\x1b[0m", 1)
+		}
+		idx = strings.Index(msg, "raft: entering ")
+		if idx != -1 {
+			if strings.Index(msg[idx:], " state:") != -1 {
+				level = levelWarning
+			}
 		}
 		return msg, app, level
 	}
