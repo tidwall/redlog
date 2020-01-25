@@ -34,6 +34,7 @@ type Options struct {
 	Level      int
 	Filter     func(line string, tty bool) (msg string, app byte, level int)
 	PostFilter func(line string, tty bool) string
+	TimeFormat string
 	App        byte
 }
 
@@ -43,16 +44,18 @@ var DefaultOptions = &Options{
 	Filter:     nil,
 	PostFilter: nil,
 	App:        'M',
+	TimeFormat: "02 Jan 15:04:05.000",
 }
 
 // Logger ...
 type Logger struct {
 	appch      uint32
+	tty        bool
 	level      int
 	pid        int
+	timeFormat string
 	filter     func(line string, tty bool) (msg string, app byte, level int)
 	postFilter func(line string, tty bool) string
-	tty        bool
 
 	mu sync.Mutex
 	wr io.Writer
@@ -73,7 +76,14 @@ func New(wr io.Writer, opts *Options) *Logger {
 	if opts.Level < levelDebug || opts.Level > levelWarning {
 		panic("invalid level")
 	}
+	if opts.App == 0 {
+		opts.App = DefaultOptions.App
+	}
+	if opts.TimeFormat == "" {
+		opts.TimeFormat = DefaultOptions.TimeFormat
+	}
 	l := new(Logger)
+	l.timeFormat = opts.TimeFormat
 	l.wr = wr
 	l.filter = opts.Filter
 	l.postFilter = opts.PostFilter
@@ -251,7 +261,7 @@ func write(useFormat bool, l *Logger, app byte, level int, format string,
 	now := time.Now()
 	prefix = strconv.AppendInt(prefix, int64(l.pid), 10)
 	prefix = append(prefix, ':', app, ' ')
-	prefix = now.AppendFormat(prefix, "02 Jan 15:04:05.000")
+	prefix = now.AppendFormat(prefix, l.timeFormat)
 	prefix = append(prefix, ' ')
 	if l.tty && levelColors[level] != "" {
 		prefix = append(prefix, "\x1b["+levelColors[level]+"m"...)
