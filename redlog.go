@@ -23,7 +23,7 @@ const (
 	levelVerbose = 1 // '-'
 	levelNotice  = 2 // '*'
 	levelWarning = 3 // '#'
-	levelFatal   = 4 // '#' special condition
+	levelError   = 4 // '#' special condition, red
 )
 
 var levelChars = []byte{'.', '-', '*', '#', '#'}
@@ -183,38 +183,53 @@ func (l *Logger) Warningln(args ...interface{}) {
 
 // Fatalf ...
 func (l *Logger) Fatalf(format string, args ...interface{}) {
-	l.writef(levelFatal, format, args)
+	l.writef(levelError, format, args)
 	os.Exit(1)
 }
 
 // Fatal ...
 func (l *Logger) Fatal(args ...interface{}) {
-	l.write(levelFatal, args)
+	l.write(levelError, args)
 	os.Exit(1)
 }
 
 // Fatalln ...
 func (l *Logger) Fatalln(args ...interface{}) {
-	l.write(levelFatal, args)
+	l.write(levelError, args)
 	os.Exit(1)
 }
 
 // Panicf ...
 func (l *Logger) Panicf(format string, args ...interface{}) {
-	l.writef(levelFatal, format, args)
+	l.writef(levelError, format, args)
 	panic("")
 }
 
 // Panic ...
 func (l *Logger) Panic(args ...interface{}) {
-	l.write(levelFatal, args)
+	l.write(levelError, args)
 	panic("")
 }
 
 // Panicln ...
 func (l *Logger) Panicln(args ...interface{}) {
-	l.write(levelFatal, args)
+	l.write(levelError, args)
 	panic("")
+}
+
+// Errorf ...
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.writef(levelError, format, args)
+}
+
+// Error ...
+func (l *Logger) Error(args ...interface{}) {
+	l.write(levelError, args)
+}
+
+// Errorln ...
+func (l *Logger) Errorln(args ...interface{}) {
+	l.write(levelError, args)
 }
 
 // Write writes to the log
