@@ -44,7 +44,7 @@ var DefaultOptions = &Options{
 	Filter:     nil,
 	PostFilter: nil,
 	App:        'M',
-	TimeFormat: "02 Jan 15:04:05.000",
+	TimeFormat: "02 Jan 2006 15:04:05.000",
 }
 
 // Logger ...
@@ -94,6 +94,32 @@ func New(wr io.Writer, opts *Options) *Logger {
 		l.tty = true
 	}
 	return l
+}
+
+func logPostFilter(line string) string {
+	a := strings.IndexByte(line, ':')
+	b := strings.IndexByte(line, ' ')
+	c := b + 25
+	if a == -1 || b == -1 || b != a+2 || c >= len(line) || line[c] != ' ' {
+		return line
+	}
+	clr := ""
+	switch line[a+1] {
+	default:
+		return line
+	case 'S':
+		clr = "\x1b[31m"
+	case 'L':
+		clr = "\x1b[32m"
+	case 'C':
+		clr = "\x1b[36m"
+	case 'F':
+		clr = "\x1b[33m"
+	case 'M':
+		clr = "\x1b[35m"
+	}
+	line = clr + line[:b] + "\x1b[0m\x1b[2m" + line[b:c] + "\x1b[0m" + line[c:]
+	return line
 }
 
 // SetApp sets the app character
@@ -305,6 +331,9 @@ func write(useFormat bool, l *Logger, app byte, level int, format string,
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.tty {
+		line = logPostFilter(line)
+	}
 	fmt.Fprintf(l.wr, "%s\n", line)
 }
 
@@ -374,9 +403,9 @@ func RedisLogColorizer(wr io.Writer) io.Writer {
 				return
 			}
 			parts := strings.Split(line, " ")
-			if len(parts) > 5 {
+			if len(parts) > 6 {
 				var color string
-				switch parts[4] {
+				switch parts[5] {
 				case ".":
 					color = "\x1b[35m"
 				case "-":
@@ -387,11 +416,11 @@ func RedisLogColorizer(wr io.Writer) io.Writer {
 					color = "\x1b[33m"
 				}
 				if color != "" {
-					parts[4] = color + parts[4] + "\x1b[0m"
+					parts[5] = color + parts[5] + "\x1b[0m"
 					line = strings.Join(parts, " ")
 				}
 			}
-			os.Stdout.Write([]byte(line))
+			os.Stdout.Write([]byte(logPostFilter(line)))
 			continue
 		}
 	}()
