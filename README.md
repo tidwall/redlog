@@ -1,7 +1,7 @@
-Redlog
+redlog
 ======
-<a href="https://travis-ci.org/tidwall/redlog"><img src="https://img.shields.io/travis/tidwall/redlog.svg?style=flat-square" alt="Build Status"></a>
-<a href="https://godoc.org/github.com/tidwall/redlog"><img src="https://img.shields.io/badge/api-reference-blue.svg?style=flat-square" alt="GoDoc"></a>
+
+[![GoDoc](https://godoc.org/github.com/tidwall/redlog?status.svg)](https://godoc.org/github.com/tidwall/redlog)
 
 Redlog is a [Redis style logger](http://build47.com/redis-log-format-levels/) for Go.
 
