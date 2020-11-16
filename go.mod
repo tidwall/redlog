@@ -1,4 +1,4 @@
-module github.com/tidwall/redlog
+module github.com/tidwall/redlog/v2
 
 go 1.15
 
