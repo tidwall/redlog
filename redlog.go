@@ -134,32 +134,44 @@ func (l *Logger) App() byte {
 
 // Debugf ...
 func (l *Logger) Debugf(format string, args ...interface{}) {
-	l.writef(levelDebug, format, args)
+	if levelDebug >= l.level {
+		l.writef(levelDebug, format, args)
+	}
 }
 
 // Debug ...
 func (l *Logger) Debug(args ...interface{}) {
-	l.write(levelDebug, args)
+	if levelDebug >= l.level {
+		l.write(levelDebug, args)
+	}
 }
 
 // Debugln ...
 func (l *Logger) Debugln(args ...interface{}) {
-	l.write(levelDebug, args)
+	if levelDebug >= l.level {
+		l.write(levelDebug, args)
+	}
 }
 
 // Verbf ...
 func (l *Logger) Verbf(format string, args ...interface{}) {
-	l.writef(levelVerbose, format, args)
+	if levelVerbose >= l.level {
+		l.writef(levelVerbose, format, args)
+	}
 }
 
 // Verb ...
 func (l *Logger) Verb(args ...interface{}) {
-	l.write(levelVerbose, args)
+	if levelVerbose >= l.level {
+		l.write(levelVerbose, args)
+	}
 }
 
 // Verbln ...
 func (l *Logger) Verbln(args ...interface{}) {
-	l.write(levelVerbose, args)
+	if levelVerbose >= l.level {
+		l.write(levelVerbose, args)
+	}
 }
 
 // Noticef ...
@@ -286,6 +298,7 @@ func (l *Logger) writef(level int, format string, args []interface{}) {
 	}
 }
 
+//go:noinline
 func (l *Logger) write(level int, args []interface{}) {
 	if level >= l.level {
 		write(false, l, l.App(), level, "", args)
